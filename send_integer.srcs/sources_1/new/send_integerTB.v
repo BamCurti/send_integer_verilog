@@ -40,32 +40,37 @@ send_integer DUT(
     .o_serialTX(tx)
 );
 
-always @(*) begin #0.5 clock = ~clock;
+always begin #1 clock = ~clock;
 end
 
 initial begin
-start <= 0;
-reset <= 1;
-data <= 8'b10101100;
+clock = 0;
+
+start = 0;
+reset = 1;
+data = 8'b10101100;
+
+#1;
+
+start = 1;
+
+while(busy && !done) begin
+    #1;
+end
+
+start = 0;
+data = 8'b11100011;
 
 #3;
 
-start <= 1;
+start = 1;
 
 while(busy && !done) begin
     #1;
 end
 
-start <= 0;
-data <= 8'b11100011;
-
-#3;
-
-start <= 1;
-
-while(busy && !done) begin
-    #1;
-end
+#1000000;
+$stop();
 
 
 end

@@ -37,6 +37,7 @@ module uartTX(
   assign o_busy = r_busy;
   assign o_done = r_done;
   assign o_serialTX = r_bitTX;
+  
 
   always @ (posedge i_clk or negedge i_rst) begin
     if (!i_rst) begin

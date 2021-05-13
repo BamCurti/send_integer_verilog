@@ -26,21 +26,21 @@ module send_integer(
     input clock,
     output reg o_busy,
     output reg o_done,
-    output reg o_serialTX
+    output o_serialTX
 );
 
 localparam IDLE = 0;
 localparam SENDING_START = 1;
 localparam SENDING_CHAR = 2;
-localparam MIDDLE = 3;
+localparam SELECT_CHAR = 3;
 localparam DONE = 4;
 
 localparam ROUND = 0;
-localparam UNIT = 1;
-localparam DECIMAL = 2;
+localparam UNIT = 2;
+localparam DECIMAL = 1;
 localparam ENTER = 3;
 
-reg [1:0] r_char_selector = 0;
+reg [1:0] r_char_selector;
 reg [2:0] rCurrentState, rNextState;
 
 reg[7: 0] r_entero;
@@ -52,15 +52,15 @@ reg uart_start;
 reg uart_busy;
 reg uart_done;
 
-wire w_uart_busy = uart_busy;
-wire w_uart_done = uart_done;
-wire w_serialTX = o_serialTX;
+wire w_uart_busy;
+wire w_uart_done;
+
 
 reg[7: 0] uart_data;
 
 always @ (posedge i_start) begin //asignación tanto de entero como de decena
-    r_decena <= (i_data / 10) + 8'b00110000; //+48 por el codigo ascii
-    r_entero <= (i_data % 10) + 8'b00110000; //+48 por el codigo ascii
+    r_decena <= (i_data / 10) + 8'h30; //+48 por el codigo ascii
+    r_entero <= (i_data % 10) + 8'h30; //+48 por el codigo ascii
 end
 
 uartTX send(  
@@ -70,19 +70,19 @@ uartTX send(
     .i_startTX(uart_start),
     .o_busy(w_uart_busy),
     .o_done(w_uart_done),
-    .o_serialTX(w_serialTX)
+    .o_serialTX(o_serialTX)
     );
     
-
+//SOLO EN SIM
 initial begin
         o_busy = 1'b0;
         o_done = 1'b0;
         uart_start = 1'b0;
-        uart_data = 8'b1;
+        uart_data = 8'b0;
         r_char_selector = 1'b0;
 end
 
-always @ (posedge clock or negedge reset) begin
+always @ (posedge clock or negedge reset or posedge w_uart_done) begin
     if(!reset) begin rNextState <= IDLE;
     end
     else begin rCurrentState <= rNextState;
@@ -102,26 +102,24 @@ always @ (*) begin
             end
         end
         SENDING_START: begin
-            if(uart_busy) begin rNextState <= SENDING_CHAR;
+            if(uart_start) begin rNextState <= SENDING_CHAR;
             end
-            else begin rNextState = rNextState <= SENDING_START;
-            end
+            else begin rNextState <= SENDING_START;
+            end        
         end
         SENDING_CHAR: begin
-            if(!uart_busy) begin 
-                if(r_char_selector == 2'b11) begin rNextState <= DONE; 
-                end 
-                else begin rNextState <= MIDDLE;
-                end
-            end
-            else begin rNextState <= SENDING_CHAR;
+        if(w_uart_done) begin
+            if(r_char_selector == 2'b11) begin rNextState <= DONE; 
+            end 
+            else begin rNextState <= SELECT_CHAR;
             end
         end
-        MIDDLE: begin
-            if(uart_busy) begin rNextState <= SENDING_CHAR;
-            end
-            else begin rNextState <= MIDDLE;
-            end
+
+
+        end
+        SELECT_CHAR: begin
+            rNextState <= SENDING_START;
+
         end
         DONE: begin
             if(r_char_selector == 2'b0) begin rNextState <= IDLE;
@@ -142,7 +140,7 @@ always @(posedge clock or negedge reset) begin
         o_busy = 1'b0;
         o_done = 1'b0;
         uart_start = 1'b0;
-        uart_data = 8'b1;
+        uart_data = r_retorno;
         r_char_selector = 2'b0;
     end
     else begin
@@ -150,21 +148,20 @@ always @(posedge clock or negedge reset) begin
         IDLE: begin
         o_busy = 1'b0;
         o_done = 1'b0;
-        uart_data = 8'b1;
-        r_char_selector = 1'b0;
+        uart_start = 1'b0;
+        r_char_selector = 2'b0;
+        uart_data = r_retorno;
+
         end
         SENDING_START: begin
-            uart_start = 1'b1;
-            uart_data = r_retorno;
             o_busy = 1;
+            uart_start = 1'b1;
         end
         SENDING_CHAR: begin
-            if(!uart_busy) begin uart_data <= 8'b1;
-            end     
+        uart_start = 0;   
         end
-        MIDDLE: begin
+        SELECT_CHAR: begin
             r_char_selector = r_char_selector + 2'b01;
-            uart_start <= 1'b1;
                       
             case(r_char_selector)
                 ROUND: begin uart_data <= r_retorno;
@@ -176,11 +173,12 @@ always @(posedge clock or negedge reset) begin
                 ENTER: begin uart_data <= r_salto;
                 end     
             endcase
-            
             uart_start = 1'b1;
         end
+        
         DONE: begin
-            uart_start = 8'b1;
+            o_busy = 0;
+            uart_start = 8'b0;
             r_char_selector = 2'b0;
             o_done = 1; 
         end

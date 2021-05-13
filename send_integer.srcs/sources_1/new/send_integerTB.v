@@ -48,22 +48,16 @@ clock = 0;
 
 start = 0;
 reset = 1;
-data = 8'b10101100;
+data = 8'd81;
 
-#1;
-
+#10;
+reset = 0;
+#10; 
+ reset = 1;
+ #10;
 start = 1;
-
-while(busy && !done) begin
-    #1;
-end
-
+#6;
 start = 0;
-data = 8'b11100011;
-
-#3;
-
-start = 1;
 
 while(busy && !done) begin
     #1;

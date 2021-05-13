@@ -1,148 +1,151 @@
-module uartTX
-(
-  clk,
-  rst,
-  startUART,
-  dataTX,
-  done,
-  busy,
-  bitTX
+module uartTX(
+  i_clk,
+  i_rst,
+  i_data,
+  i_startTX,
+  o_busy,
+  o_done,
+  o_serialTX
 );
 
-  parameter CLKCOUNTER = ???;
-  parameter NBITS_COUNTER = ???;
+  parameter CLK_DIVIDER = 10417;
+  parameter NBITS_DIVIDER = 14;
+
+  input i_clk;
+  input i_rst;
+  input [7:0] i_data;
+  input i_startTX;
+  output o_busy;
+  output o_done;
+  output o_serialTX;
 
   localparam IDLE = 3'b000;
-  localparam TX_START = 3'b001;
-  localparam TX_DATA = 3'b011;
-  localparam TX_STOP = 3'b010;
+  localparam TX_START_BIT = 3'b001;
+  localparam TX_DATA_BITS = 3'b011;
+  localparam TX_STOP_BIT = 3'b010;
   localparam DONE = 3'b110;
 
-  input clk;
-  input rst;
-  input startUART;
-  input [7:0] dataTX;
-  output reg done;
-  output reg busy;
-  output reg bitTX;
+  reg [2:0] r_currentState;
+  reg [2:0] r_nextState;
+  reg [NBITS_DIVIDER-1:0] r_clkCounter;
+  reg [2:0] r_txBitIdx;
+  reg [7:0] r_txData;
+  reg r_done;
+  reg r_busy;
+  reg r_bitTX;
 
-  reg [7:0] rDataTX;
-  reg [2:0] rDataIdx;
-  reg [2:0] rCurrentState;
-  reg [2:0] rNextState;
-  reg [NBITS_COUNTER-1:0] rClkCounter;
+  assign o_busy = r_busy;
+  assign o_done = r_done;
+  assign o_serialTX = r_bitTX;
 
-  always @ (posedge clk or negedge rst) begin
-    if (!rst) begin
-      rCurrentState <= IDLE;
+  always @ (posedge i_clk or negedge i_rst) begin
+    if (!i_rst) begin
+      r_clkCounter <= {NBITS_DIVIDER{1'b0}};
+      r_txBitIdx <= 3'b0;
+      r_txData <= 8'b0;
+      r_done <= 1'b0;
+      r_busy <= 1'b0;
+      r_bitTX <= 1'b1;
     end
     else begin
-      rCurrentState <= rNextState;
-    end
-  end
-
-  always @ ( * ) begin
-    case (estado)
-      IDLE: begin
-        if (startUART) begin
-          rNextState = TX_START;
-        end
-        else begin
-          rNextState = IDLE;
-        end
-      end
-      TX_START: begin
-        if(rClkCounter < CLKCOUNTER) begin
-          rNextState = TX_START;
-        end
-        else begin
-          rNextState = TX_DATA;
-        end
-      end
-      TX_DATA: begin
-        if (rDataIdx == 7 && rClkCounter == CLKCOUNTER) begin
-          rNextState = TX_STOP;
-        end
-        else begin
-          rNextState = TX_DATA;
-        end
-      end
-      TX_STOP: begin
-        if(rClkCounter < CLKCOUNTER) begin
-          rNextState = TX_STOP;
-        end
-        else begin
-          rNextState = DONE;
-        end
-      end
-      DONE: begin
-        rNextState = IDLE;
-      end
-      default: begin
-        rNextState = IDLE;
-      end
-    endcase
-  end
-
-  always @ (posedge clk or negedge rst) begin
-    if(!rst) begin
-      done <= 1'b0;
-      busy <= 1'b0;
-      bitTX <= 1'b1;
-      rDataTX <= 8'd0;
-      rDataIdx <= 3'd0;
-      rClkCounter <= {NBITS_COUNTER{1'b0}};
-    end
-    else begin
-      case (rCurrentState)
+      case (r_currentState)
         IDLE: begin
-          done <= 1'b0;
-          busy <= 1'b0;
-          bitTX <= 1'b1;
-          rDataTX <= 8'd0;
-          rDataIdx <= 3'd0;
-          rClkCounter <= {NBITS_COUNTER{1'b0}};
-        end
-        TX_START: begin
-          done <= 1'b0;
-          busy <= 1'b1;
-          bitTX <= 1'b0;
-          rDataTX <= dataTX;
-          rDataIdx <= 3'd0;
-          if (rClkCounter < CLKCOUNTER) begin
-            rClkCounter <= rClkCounter + 1'b1;
-          end
-          else begin
-            rClkCounter <= {NBITS_COUNTER{1'b0}};
+          r_clkCounter <= {NBITS_DIVIDER{1'b0}};
+          r_txBitIdx <= 4'b0;
+          r_txData <= 8'b0;
+          r_done <= 1'b0;
+          if (i_startTX) begin
+            r_txData <= i_data;
+            r_busy = 1'b1;
           end
         end
-        TX_DATA: begin
-          bitTX <= rDataTX[rDataIdx];
-          if (rClkCounter < CLKCOUNTER) begin
-            rClkCounter <= rClkCounter + 1'b1;
+        TX_START_BIT: begin
+          r_bitTX <= 1'b0;
+          if (r_clkCounter < CLK_DIVIDER-1) begin //conteo de tiempo
+            r_clkCounter <= r_clkCounter + 1'b1;
           end
           else begin
-            rClkCounter <= {NBITS_COUNTER{1'b0}};
-            rDataIdx <= rDataIdx + 1'b1;
+            r_clkCounter <= {NBITS_DIVIDER{1'b0}};
+          end 
+        end
+        TX_DATA_BITS: begin
+          r_bitTX <= r_txData[r_txBitIdx];
+          if (r_clkCounter < CLK_DIVIDER-1) begin
+            r_clkCounter <= r_clkCounter + 1'b1;
+          end
+          else begin
+            r_clkCounter <= {NBITS_DIVIDER{1'b0}};
+            r_txBitIdx <= r_txBitIdx + 1'b1;
           end
         end
-        TX_STOP: begin
-          bitTX <= 1'b1;
-          if (rClkCounter < CLKCOUNTER) begin
-            rClkCounter <= rClkCounter + 1'b1;
+        TX_STOP_BIT: begin
+          r_bitTX <= 1'b1;
+          if (r_clkCounter < CLK_DIVIDER-1) begin
+            r_clkCounter <= r_clkCounter + 1'b1;
           end
           else begin
-            rClkCounter <= {NBITS_COUNTER{1'b0}};
+            r_clkCounter <= {NBITS_DIVIDER{1'b0}};
           end
-          //rNextState <= DONE;
         end
         DONE: begin
-          done <= 1'b1;
-          busy <= 1'b0;
+          r_done <= 1'b1;
+          r_busy <= 1'b0;
         end
         default: ;
       endcase
     end
+  end
+
+  always @ ( posedge i_clk or negedge i_rst ) begin
+    if (!i_rst) begin
+      r_currentState <= IDLE;
+    end
+    else begin
+      r_currentState <= r_nextState;
+    end
+  end
+
+  always @ ( * ) begin
+    case (r_currentState)
+      IDLE: begin
+        if (i_startTX) begin
+          r_nextState = TX_START_BIT;
+        end
+        else begin
+          r_nextState = IDLE;
+        end
+      end
+      TX_START_BIT: begin
+        if (r_clkCounter < CLK_DIVIDER-1) begin
+          r_nextState = TX_START_BIT;
+        end
+        else begin
+          r_nextState = TX_DATA_BITS;
+        end
+      end
+      TX_DATA_BITS: begin
+        if (r_txBitIdx == 7 && r_clkCounter == CLK_DIVIDER-1) begin
+            r_nextState = TX_STOP_BIT;
+        end
+        else begin
+          r_nextState = TX_DATA_BITS;
+        end
+      end
+      TX_STOP_BIT: begin
+        if (r_clkCounter < CLK_DIVIDER-1) begin
+          r_nextState = TX_STOP_BIT;
+        end
+        else begin
+          r_nextState = DONE;
+        end
+      end
+      DONE: begin
+        r_nextState = IDLE;
+      end
+      default: begin
+        r_nextState = IDLE;
+      end
+    endcase
   end
 
 endmodule
